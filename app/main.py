@@ -19,7 +19,7 @@ def home():
 
 
 # include router
-app.include_router(user_route, prefix="/user")
+app.include_router(user_route, prefix="/user", tags=["User Authentication"])
 
 if __name__ == "__main__":
     uvicorn.run(app, port=8000, reload=True)

@@ -15,16 +15,22 @@ from app.services.authentication import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from app.services.send_email import send_verification_email
+from app.schemas.user_sch import UserRole, UserGender, UserSignUp
 
 router = APIRouter()
 
 
 # Request/Response Schemas
 class UserSignUp(BaseModel):
+    fname: str
+    lname: str
     name: str
     email: EmailStr
     contact_number: str
     password: str
+    location: str
+    gender: str
+    role: str
 
 
 class UserLogin(BaseModel):
@@ -34,9 +40,14 @@ class UserLogin(BaseModel):
 
 class UserResponse(BaseModel):
     user_id: int
+    fname: str
+    lname: str
     name: str
     email: str
     contact_number: str
+    location: str
+    gender: str
+    role: str
     is_verified: bool
 
     class Config:
@@ -71,10 +82,15 @@ async def signup(
 
     # Create new user first to get user_id
     new_user = User(
+        fname=user_data.fname,
+        lname=user_data.lname,
         name=user_data.name,
         email=user_data.email,
         contact_number=user_data.contact_number,
         password=hashed_password,
+        location=user_data.location,
+        gender=UserGender(user_data.gender),
+        role=UserRole(user_data.role),
         is_verified=False,
     )
 
