@@ -1,63 +1,58 @@
-from passlib.context import CryptContext
-from jose import jwt, JWTError
-from dotenv import load_dotenv
+import jwt
 import os
-from fastapi import HTTPException, status, Depends
-from models import User
-
-from fastapi.security import OAuth2PasswordBearer
-
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError, InvalidHash
+from typing import Optional
 
 load_dotenv()
-pwd_contxt = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-KEY = os.getenv("SECRET")
-ALGO = "HS256"
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-o_auth = OAuth2PasswordBearer(tokenUrl="/user/get-token")
-
-
-async def get_user(token=Depends(o_auth)) -> User:
-    user = await token_verify(token=token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="User is not verified"
-        )
-    if not user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User is nt verified .Please cck your email",
-        )
-    return user
+# Password hashing with Argon2
+pwd_hasher = PasswordHasher()
 
 
-async def token_verify(token: str) -> User:
+def hash_password(password: str) -> str:
+    """Hash a password using Argon2"""
+    return pwd_hasher.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain password against its hashed version"""
     try:
-        data = jwt.decode(token=token, key=KEY, algorithms=ALGO)
-        print(f"Decoding {data}")
-        user = await User.get(id=data.get("id"))
-        # return data["user_id"]
-    except JWTError as e:
-        print(f"error in token verify {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invaild Token",
-            # headers=b
-        )
-    return user
+        pwd_hasher.verify(hashed_password, plain_password)
+        return True
+    except (VerifyMismatchError, InvalidHash):
+        return False
 
 
-def token_encode(data: dict):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a JWT access token"""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def create_verification_token(user_id: int) -> str:
+    """Create a verification token"""
+    data = {"user_id": user_id, "type": "verification"}
+    token = jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+    return token
+
+
+def verify_token(token: str) -> Optional[dict]:
+    """Verify a JWT token and return its payload"""
     try:
-        token = jwt.encode(data, key=KEY, algorithm=ALGO)
-        return token
-    except Exception as e:
-        print(f"Unable to encode {e}")
-
-
-def hash_password(password) -> str:
-    return pwd_contxt.hash(password)
-
-
-def verify_password(plain_password, hashed_password) -> bool:
-    return pwd_contxt.verify(plain_password, hashed_password)
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
