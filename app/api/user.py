@@ -78,11 +78,14 @@ async def signup(
     # Hash password
     hashed_password = hash_password(user_data.password)
 
+    # Create full name from fname and lname
+    full_name = f"{user_data.fname} {user_data.lname}"
+
     # Create new user first to get user_id
     new_user = User(
         fname=user_data.fname,
         lname=user_data.lname,
-        name=user_data.name,
+        name=full_name,
         email=user_data.email,
         contact_number=user_data.contact_number,
         password=hashed_password,
@@ -108,7 +111,7 @@ async def signup(
     background_tasks.add_task(
         send_verification_email,
         email=user_data.email,
-        name=user_data.name,
+        name=full_name,
         token=verification_token,
     )
 

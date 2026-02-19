@@ -10,9 +10,9 @@ class UserRole(str, Enum):
 
 
 class UserGender(str, Enum):
-    MALE = "male"
-    FEMALE = "female"
-    OTHER = "other"
+    MALE = "Male"
+    FEMALE = "Female"
+    OTHER = "Other"
 
 
 class UserSignUp(BaseModel):

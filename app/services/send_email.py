@@ -10,6 +10,7 @@ load_dotenv()
 USER = os.getenv("MAIL_USERNAME")
 PASS = os.getenv("MAIL_PASSWORD")
 FROM = os.getenv("MAIL_FROM")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 
 class EmailSchema(BaseModel):
@@ -69,7 +70,7 @@ html_template = """
 
 async def send_verification_email(email: str, name: str, token: str):
     """Send verification email to user"""
-    verify_url = f"http://127.0.0.1:8000/user/verify?token={token}"
+    verify_url = f"{FRONTEND_URL}/verify?token={token}"
     email_body = html_template.format(name=name, url=verify_url)
 
     message = MessageSchema(
