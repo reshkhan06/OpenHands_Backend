@@ -24,7 +24,6 @@ router = APIRouter()
 class UserSignUp(BaseModel):
     fname: str
     lname: str
-    name: str
     email: EmailStr
     contact_number: str
     password: str
@@ -42,7 +41,6 @@ class UserResponse(BaseModel):
     user_id: int
     fname: str
     lname: str
-    name: str
     email: str
     contact_number: str
     location: str
@@ -149,7 +147,7 @@ async def login(
     if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email before logging in",
+            detail=f" {user.fname} Please verify your email before logging in",
         )
 
     # Create access token
@@ -205,3 +203,31 @@ async def verify_email(token: str, session: Session = Depends(get_session)):
     session.commit()
 
     return {"message": "Email verified successfully. You can now login."}
+
+
+# Delete User by Email
+@router.delete("/delete", response_model=dict)
+async def delete_user(
+    email: EmailStr,
+    session: Session = Depends(get_session),
+):
+    """Delete user by email"""
+
+    # Check if user exists
+    statement = select(User).where(User.email == email)
+    user = session.exec(statement).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Delete user
+    session.delete(user)
+    session.commit()
+
+    return {
+        "message": f"User {user.fname} {user.lname} deleted successfully",
+        "email": user.email,
+    }
