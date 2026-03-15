@@ -1,19 +1,25 @@
 """Unified email verification for both User (donor) and NGO."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlmodel import Session, select
 
 from app.db.connection import get_session
 from app.models.user import User
 from app.models.ngo import NGO as NGOModel
 from app.services.authentication import verify_token
+from app.services.send_email import send_new_ngo_notification_to_admin
 
 router = APIRouter()
 
 
 @router.get("/verify")
-async def verify_email_token(token: str, session: Session = Depends(get_session)):
+async def verify_email_token(
+    token: str,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+):
     """
     Verify email using token. Supports both donor (user) and NGO tokens.
+    For NGO: after verification, account stays pending admin approval; admin is notified.
     Link in email: {FRONTEND_URL}/verify?token=...
     """
     payload = verify_token(token)
@@ -32,12 +38,25 @@ async def verify_email_token(token: str, session: Session = Depends(get_session)
         if not ngo:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NGO not found")
         if ngo.is_verified:
-            return {"message": "NGO email already verified. You can log in."}
-        ngo.is_verified = True
+            return {"message": "NGO email already verified. You can log in.", "pending_admin_approval": False}
+        # Only clear verification token; do NOT set is_verified. Admin must approve.
         ngo.verification_token = None
         session.add(ngo)
         session.commit()
-        return {"message": "NGO email verified successfully. You can now log in."}
+        session.refresh(ngo)
+        # Notify admin that a new NGO is waiting for approval
+        background_tasks.add_task(
+            send_new_ngo_notification_to_admin,
+            ngo_name=ngo.ngo_name,
+            ngo_email=ngo.email,
+            city=ngo.city,
+            state=ngo.state,
+            registration_number=ngo.registration_number,
+        )
+        return {
+            "message": "Email verified. Your account is pending admin approval. You will receive an email once approved.",
+            "pending_admin_approval": True,
+        }
 
     if token_type == "verification" and "user_id" in payload:
         user_id = payload["user_id"]

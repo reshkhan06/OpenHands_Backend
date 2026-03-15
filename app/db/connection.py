@@ -39,6 +39,34 @@ def _migrate_add_user_is_active():
             print("Migration: added users.is_active column.")
 
 
+def _seed_default_admin_if_missing():
+    """Create default admin user if no user with admin@gmail.com exists."""
+    from app.models.user import User
+    from app.schemas.user_sch import UserRole, UserGender
+    from app.services.authentication import hash_password
+
+    with Session(engine) as session:
+        existing = session.exec(select(User).where(User.email == "admin@gmail.com")).first()
+        if existing:
+            return
+        hashed = hash_password("Admin@123")
+        admin_user = User(
+            fname="Admin",
+            lname="User",
+            email="admin@gmail.com",
+            contact_number=9999999999,
+            password=hashed,
+            location="Admin",
+            gender=UserGender.OTHER,
+            role=UserRole.ADMIN,
+            is_verified=True,
+            is_active=True,
+        )
+        session.add(admin_user)
+        session.commit()
+        print("Seed: added default admin (admin@gmail.com, password: Admin@123)")
+
+
 def _seed_ngos_if_empty():
     """Insert test NGOs for UI testing if the ngos table is empty."""
     from app.models.ngo import NGO
@@ -101,6 +129,7 @@ def create_db_and_tables():
 
     SQLModel.metadata.create_all(engine)
     _migrate_add_user_is_active()
+    _seed_default_admin_if_missing()
     _seed_ngos_if_empty()
     print("Database tables created successfully!")
 

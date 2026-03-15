@@ -1,5 +1,5 @@
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlmodel import Session, select
 from pydantic import BaseModel
 
@@ -12,6 +12,7 @@ from app.models.admin_config import AdminConfig
 from app.schemas.user_sch import UserRole
 from app.dependencies.auth import get_current_user, require_roles
 from app.services.pickup_service import pickup_to_response
+from app.services.send_email import send_ngo_approval_result
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -116,9 +117,10 @@ def admin_list_ngos(
 
 
 @router.patch("/ngos/{ngo_id}")
-def admin_update_ngo(
+async def admin_update_ngo(
     ngo_id: int,
     body: NGOUpdateAdmin,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     current_user: User = AdminUser,
 ):
@@ -131,6 +133,14 @@ def admin_update_ngo(
     session.add(ngo)
     session.commit()
     session.refresh(ngo)
+    # Send email to NGO about approval or rejection
+    if body.is_verified is not None:
+        background_tasks.add_task(
+            send_ngo_approval_result,
+            ngo_email=ngo.email,
+            ngo_name=ngo.ngo_name,
+            approved=body.is_verified,
+        )
     return {"ngo_id": ngo.ngo_id, "is_verified": ngo.is_verified}
 
 

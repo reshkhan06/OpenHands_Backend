@@ -1,16 +1,47 @@
 import asyncio
+import logging
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from pydantic import BaseModel, EmailStr
 from typing import List
 
-load_dotenv()
+# Load .env from Backend directory so it works when running uvicorn from project root or Backend
+_backend_dir = Path(__file__).resolve().parent.parent
+load_dotenv(_backend_dir / ".env")
+load_dotenv()  # also current working directory
 
-USER = os.getenv("MAIL_USERNAME")
-PASS = os.getenv("MAIL_PASSWORD")
-FROM = os.getenv("MAIL_FROM")
+logger = logging.getLogger(__name__)
+
+USER = os.getenv("MAIL_USERNAME") or ""
+PASS = os.getenv("MAIL_PASSWORD") or ""
+FROM = os.getenv("MAIL_FROM") or ""
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")  # Admin notified when new NGO registers; optional
+
+
+def _mail_configured() -> bool:
+    """Return True if mail credentials are set (not empty or placeholder)."""
+    placeholder = ("your email", "your pass", "your key", "")
+    u = (USER or "").strip().lower()
+    p = (PASS or "").strip()
+    f = (FROM or "").strip().lower()
+    if u in placeholder or p in placeholder or f in placeholder:
+        return False
+    return bool(u and p and f)
+
+# Directory containing .html email templates (same folder as this module)
+_TEMPLATES_DIR = Path(__file__).resolve().parent / "email_templates"
+
+
+def _load_template(filename: str) -> str:
+    """Load an HTML template from email_templates/ by filename."""
+    path = _TEMPLATES_DIR / filename
+    if not path.is_file():
+        raise FileNotFoundError(f"Email template not found: {path}")
+    return path.read_text(encoding="utf-8")
 
 
 class EmailSchema(BaseModel):
@@ -30,51 +61,25 @@ conf = ConnectionConfig(
     VALIDATE_CERTS=True,
 )
 
-html_template = """
-<!DOCTYPE html>
-<html>
-  <head>
-    <style>
-      .container {{
-        font-family: Arial, sans-serif;
-        padding: 20px;
-        background-color: #f9f9f9;
-        border-radius: 8px;
-        max-width: 600px;
-        margin: auto;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-      }}
-      .btn {{
-        background-color: #2d8fdd;
-        color: white;
-        padding: 12px 24px;
-        text-decoration: none;
-        border-radius: 5px;
-        font-weight: bold;
-        display: inline-block;
-        margin-top: 20px;
-      }}
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h2>Hello {name},</h2>
-      <p>Thanks for registering! Please click the button below to verify your email address.</p>
-      <a href="{url}" class="btn">Verify Email</a>
-      <p>If you did not sign up for this account, please ignore this email.</p>
-    </div>
-  </body>
-</html>
-"""
-
 
 async def send_verification_email(email: str, name: str, token: str):
-    """Send verification email to user"""
+    """Send verification email to user."""
+    if not _mail_configured():
+        logger.warning(
+            "Email not sent (verification): MAIL_USERNAME, MAIL_PASSWORD, or MAIL_FROM not set in .env. "
+            "Set them in Backend/.env and use a Gmail App Password if using Gmail."
+        )
+        return False
+    try:
+        template = _load_template("verification_email.html")
+    except FileNotFoundError as e:
+        logger.exception("Email template missing: %s", e)
+        return False
     verify_url = f"{FRONTEND_URL}/verify?token={token}"
-    email_body = html_template.format(name=name, url=verify_url)
+    email_body = template.format(name=name, url=verify_url)
 
     message = MessageSchema(
-        subject="Account Verification - Donation OpenHand",
+        subject="Verify your email – OpenHands",
         recipients=[email],
         body=email_body,
         subtype=MessageType.html,
@@ -83,64 +88,14 @@ async def send_verification_email(email: str, name: str, token: str):
     try:
         fm = FastMail(conf)
         await fm.send_message(message=message)
+        logger.info("Verification email sent to %s", email)
         return True
     except Exception as e:
-        print(f"Error sending email: {e}")
+        logger.exception("Error sending verification email to %s: %s", email, e)
         return False
 
 
 # --- Pickup notifications ---
-
-PICKUP_REQUEST_TO_NGO_HTML = """
-<!DOCTYPE html>
-<html>
-  <head>
-    <style>
-      .container {{ font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9; border-radius: 8px; max-width: 600px; margin: auto; }}
-      .card {{ background: white; padding: 16px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #2d8fdd; }}
-      .label {{ font-weight: bold; color: #555; }}
-      a {{ color: #2d8fdd; }}
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h2>Hello {ngo_name},</h2>
-      <p><strong>{donor_name}</strong> has requested a donation pickup.</p>
-      <div class="card">
-        <p><span class="label">Pickup #</span> {pickup_id}</p>
-        <p><span class="label">Address:</span> {pickup_address}</p>
-        <p><span class="label">Scheduled time:</span> {scheduled_time}</p>
-        <p><span class="label">Items:</span> {items_description}</p>
-      </div>
-      <p><a href="{dashboard_url}">View in dashboard</a> to accept and manage this pickup.</p>
-    </div>
-  </body>
-</html>
-"""
-
-PICKUP_STATUS_TO_DONOR_HTML = """
-<!DOCTYPE html>
-<html>
-  <head>
-    <style>
-      .container {{ font-family: Arial, sans-serif; padding: 20px; background-color: #f9f9f9; border-radius: 8px; max-width: 600px; margin: auto; }}
-      .card {{ background: white; padding: 16px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #2d8fdd; }}
-      .status {{ font-weight: bold; color: #2d8fdd; }}
-      a {{ color: #2d8fdd; }}
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h2>Hello {donor_name},</h2>
-      <p>Your pickup <strong>#{pickup_id}</strong> (assigned to {ngo_name}) has been updated.</p>
-      <div class="card">
-        <p><span class="status">Current status: {status_label}</span></p>
-      </div>
-      <p><a href="{dashboard_url}">View in dashboard</a></p>
-    </div>
-  </body>
-</html>
-"""
 
 STATUS_LABELS = {
     "requested": "New request",
@@ -162,8 +117,16 @@ async def send_pickup_request_to_ngo(
     items_description: str,
 ):
     """Notify NGO that a donor has requested a pickup."""
+    if not _mail_configured():
+        logger.warning("Email not sent (pickup to NGO): mail not configured in .env")
+        return False
+    try:
+        template = _load_template("pickup_request_to_ngo.html")
+    except FileNotFoundError as e:
+        logger.exception("Email template missing: %s", e)
+        return False
     dashboard_url = f"{FRONTEND_URL}/dashboard/ngo/pickups/{pickup_id}"
-    body = PICKUP_REQUEST_TO_NGO_HTML.format(
+    body = template.format(
         ngo_name=ngo_name,
         donor_name=donor_name,
         pickup_id=pickup_id,
@@ -181,9 +144,10 @@ async def send_pickup_request_to_ngo(
     try:
         fm = FastMail(conf)
         await fm.send_message(message=message)
+        logger.info("Pickup request email sent to NGO %s", ngo_email)
         return True
     except Exception as e:
-        print(f"Error sending pickup notification to NGO: {e}")
+        logger.exception("Error sending pickup notification to NGO %s: %s", ngo_email, e)
         return False
 
 
@@ -195,9 +159,17 @@ async def send_pickup_status_to_donor(
     ngo_name: str,
 ):
     """Notify donor that their pickup status was updated by the NGO."""
+    if not _mail_configured():
+        logger.warning("Email not sent (pickup status to donor): mail not configured in .env")
+        return False
+    try:
+        template = _load_template("pickup_status_to_donor.html")
+    except FileNotFoundError as e:
+        logger.exception("Email template missing: %s", e)
+        return False
     status_label = STATUS_LABELS.get(new_status.lower(), new_status.replace("_", " ").title())
     dashboard_url = f"{FRONTEND_URL}/dashboard/donor/pickups/{pickup_id}"
-    body = PICKUP_STATUS_TO_DONOR_HTML.format(
+    body = template.format(
         donor_name=donor_name,
         pickup_id=pickup_id,
         status_label=status_label,
@@ -213,9 +185,101 @@ async def send_pickup_status_to_donor(
     try:
         fm = FastMail(conf)
         await fm.send_message(message=message)
+        logger.info("Pickup status email sent to donor %s", donor_email)
         return True
     except Exception as e:
-        print(f"Error sending pickup status to donor: {e}")
+        logger.exception("Error sending pickup status to donor %s: %s", donor_email, e)
+        return False
+
+
+# --- New NGO notification to admin ---
+
+async def send_new_ngo_notification_to_admin(
+    ngo_name: str,
+    ngo_email: str,
+    city: str,
+    state: str,
+    registration_number: str,
+):
+    """Notify admin that a new NGO has verified email and is pending approval."""
+    if not ADMIN_EMAIL or not ADMIN_EMAIL.strip():
+        return False
+    if not _mail_configured():
+        logger.warning("Email not sent (new NGO to admin): mail not configured in .env")
+        return False
+    try:
+        template = _load_template("new_ngo_to_admin.html")
+    except FileNotFoundError as e:
+        logger.exception("Email template missing: %s", e)
+        return False
+    admin_url = f"{FRONTEND_URL}/admin/ngos"
+    body = template.format(
+        ngo_name=ngo_name,
+        ngo_email=ngo_email,
+        city=city or "—",
+        state=state or "—",
+        registration_number=registration_number or "—",
+        admin_url=admin_url,
+    )
+    message = MessageSchema(
+        subject=f"New NGO pending approval: {ngo_name} – OpenHands",
+        recipients=[ADMIN_EMAIL.strip()],
+        body=body,
+        subtype=MessageType.html,
+    )
+    if not _mail_configured():
+        logger.warning("Email not sent (new NGO to admin): mail not configured in .env")
+        return False
+    try:
+        fm = FastMail(conf)
+        await fm.send_message(message=message)
+        logger.info("New NGO notification sent to admin %s", ADMIN_EMAIL.strip())
+        return True
+    except Exception as e:
+        logger.exception("Error sending new NGO notification to admin: %s", e)
+        return False
+
+
+# --- NGO approval / rejection result email ---
+
+async def send_ngo_approval_result(ngo_email: str, ngo_name: str, approved: bool):
+    """Send email to NGO after admin approves or rejects their account."""
+    if not _mail_configured():
+        logger.warning("Email not sent (NGO approval result): mail not configured in .env")
+        return False
+    try:
+        template = _load_template("ngo_approval.html")
+    except FileNotFoundError as e:
+        logger.exception("Email template missing: %s", e)
+        return False
+    login_url = f"{FRONTEND_URL}/login"
+    if approved:
+        body_block = (
+            '<div class="body-block success">'
+            '<p><strong>Your NGO account has been approved.</strong> '
+            'You can now log in and start receiving donation pickups.</p></div>'
+        )
+    else:
+        body_block = (
+            '<div class="body-block reject">'
+            '<p><strong>Your NGO registration has been reviewed and was not approved.</strong> '
+            'If you believe this is an error, please contact support.</p></div>'
+        )
+    body = template.format(ngo_name=ngo_name, body_block=body_block, login_url=login_url)
+    subject = "Your NGO account has been approved – OpenHands" if approved else "NGO registration update – OpenHands"
+    message = MessageSchema(
+        subject=subject,
+        recipients=[ngo_email],
+        body=body,
+        subtype=MessageType.html,
+    )
+    try:
+        fm = FastMail(conf)
+        await fm.send_message(message=message)
+        logger.info("NGO approval result email sent to %s", ngo_email)
+        return True
+    except Exception as e:
+        logger.exception("Error sending NGO approval result to %s: %s", ngo_email, e)
         return False
 
 

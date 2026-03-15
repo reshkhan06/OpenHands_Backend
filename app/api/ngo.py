@@ -148,11 +148,16 @@ async def login_ngo(
                 detail="Invalid email or password",
             )
 
-        # Check if NGO is verified (optional, based on requirements)
+        # NGO must be approved by admin (is_verified) to log in
         if not ngo.is_verified:
+            if ngo.verification_token:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Please verify your email first. Check your inbox for the verification link.",
+                )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Account not verified. Please verify your email first.",
+                detail="Your account is pending admin approval. You will receive an email once approved.",
             )
 
         # Create access token
