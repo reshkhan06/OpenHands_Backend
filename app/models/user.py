@@ -10,8 +10,7 @@ class User(SQLModel, table=True):
     user_id: Optional[int] = Field(default=None, primary_key=True)
     fname: str
     lname: str
-    name: str
-    contact_number: str
+    contact_number: int
     email: str = Field(unique=True, index=True)
     password: str
     is_verified: bool = Field(default=False)
@@ -20,3 +19,4 @@ class User(SQLModel, table=True):
     location: str
     gender: UserGender = Field(default=UserGender.MALE)
     role: UserRole = Field(default=UserRole.DONOR)
+    is_active: bool = Field(default=True)

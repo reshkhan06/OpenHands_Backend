@@ -1,12 +1,13 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from enum import Enum
-import phonenumbers
 
 
 class UserRole(str, Enum):
+    USER = "user"
     DONOR = "donor"
     NGO_REPRESENTATIVE = "ngo_representative"
+    ADMIN = "admin"
 
 
 class UserGender(str, Enum):
@@ -18,9 +19,8 @@ class UserGender(str, Enum):
 class UserSignUp(BaseModel):
     fname: str
     lname: str
-    name: str
     email: EmailStr
-    contact_number: str
+    contact_number: int
     password: str
     location: str
     gender: str
@@ -31,7 +31,7 @@ class UserSignUp(BaseModel):
     def validate_fname(cls, v):
         if not v or not v.strip():
             raise ValueError("First name cannot be empty")
-        if len(v) < 2 or len(v) > 50:
+        if len(v.strip()) < 2 or len(v.strip()) > 50:
             raise ValueError("First name must be between 2 and 50 characters")
         return v.strip()
 
@@ -40,33 +40,19 @@ class UserSignUp(BaseModel):
     def validate_lname(cls, v):
         if not v or not v.strip():
             raise ValueError("Last name cannot be empty")
-        if len(v) < 2 or len(v) > 50:
+        if len(v.strip()) < 2 or len(v.strip()) > 50:
             raise ValueError("Last name must be between 2 and 50 characters")
         return v.strip()
 
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Full name cannot be empty")
-        if len(v) < 3 or len(v) > 100:
-            raise ValueError("Full name must be between 3 and 100 characters")
-        return v.strip()
-
+    # 10 Digit Contact Number Validation
     @field_validator("contact_number")
     @classmethod
-    def validate_phone_number(cls, v):
-        try:
-            parsed = phonenumbers.parse(v, "IN")
-            if not phonenumbers.is_valid_number(parsed):
-                raise ValueError("Invalid phone number")
-            return phonenumbers.format_number(
-                parsed, phonenumbers.PhoneNumberFormat.E164
-            )
-        except Exception:
-            raise ValueError(
-                "Invalid phone number format. Use format: +91 9370036076 or 9370036076"
-            )
+    def validate_contact_number(cls, v):
+        if not v.isdigit():
+            raise ValueError("Contact number must contain only digits")
+        if len(v) != 10:
+            raise ValueError("Contact number must be exactly 10 digits")
+        return v
 
     @field_validator("password")
     @classmethod
@@ -82,11 +68,14 @@ class UserSignUp(BaseModel):
     @field_validator("location")
     @classmethod
     def validate_location(cls, v):
-        if not v or not v.strip():
+        v = (v or "").strip()
+        if not v:
             raise ValueError("Location cannot be empty")
         if len(v) < 3 or len(v) > 100:
             raise ValueError("Location must be between 3 and 100 characters")
-        return v.strip()
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Location must contain at least one letter")
+        return v
 
     @field_validator("gender")
     @classmethod
@@ -99,7 +88,8 @@ class UserSignUp(BaseModel):
     @field_validator("role")
     @classmethod
     def validate_role(cls, v):
-        valid_roles = ["donor", "ngo_representative"]
+        # Only donor (and admin for superuser) - donor donates items; NGO is separate entity
+        valid_roles = ["donor", "admin"]
         if v.lower() not in valid_roles:
             raise ValueError(f"Role must be one of: {valid_roles}")
         return v.lower()
@@ -107,35 +97,33 @@ class UserSignUp(BaseModel):
 
 class UserBase(BaseModel):
     name: str
-    contact_number: str
+    contact_number: int
     email: EmailStr
     location: str
     gender: UserGender
     role: UserRole
 
+    # 10 Digit Contact Number Validation
     @field_validator("contact_number")
     @classmethod
-    def validate_phone_number(cls, v):
-        try:
-            parsed = phonenumbers.parse(
-                v, "IN"
-            )  # Assuming default country code as India
-            if not phonenumbers.is_valid_number(parsed):
-                raise ValueError("Invalid phone number")
-            return phonenumbers.format_number(
-                parsed, phonenumbers.PhoneNumberFormat.E164
-            )
-        except Exception:
-            raise ValueError("Invalid phone number format")
+    def validate_contact_number(cls, v):
+        if not v.isdigit():
+            raise ValueError("Contact number must contain only digits")
+        if len(v) != 10:
+            raise ValueError("Contact number must be exactly 10 digits")
+        return v
 
     @field_validator("location")
     @classmethod
     def validate_location(cls, v):
-        if not v.strip():
+        v = (v or "").strip()
+        if not v:
             raise ValueError("Location cannot be empty")
         if len(v) < 1 or len(v) > 100:
             raise ValueError("Location must be between 1 and 100 characters")
-        return v.strip()
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Location must contain at least one letter")
+        return v
 
 
 class UserCreate(UserBase):
@@ -144,7 +132,7 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
-    contact_number: Optional[str] = None
+    contact_number: Optional[int] = None
     email: Optional[EmailStr] = None
 
 

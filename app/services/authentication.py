@@ -43,8 +43,15 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def create_verification_token(user_id: int) -> str:
-    """Create a verification token"""
+    """Create a verification token for user (donor)"""
     data = {"user_id": user_id, "type": "verification"}
+    token = jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+    return token
+
+
+def create_ngo_verification_token(ngo_id: int) -> str:
+    """Create a verification token for NGO"""
+    data = {"ngo_id": ngo_id, "type": "ngo_verification"}
     token = jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
     return token
 
