@@ -22,25 +22,28 @@ Copy `.env.example` to `.env` and set at least `SECRET_KEY`. See [doc/05-configu
 uvicorn app.main:app --reload
 ```
 
-- **API base:** http://localhost:8000  
-- **Swagger UI:** http://localhost:8000/docs  
-- **ReDoc:** http://localhost:8000/redoc  
+- **API base:** [http://localhost:8000](http://localhost:8000)  
+- **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)  
+- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 ## Documentation
 
 Detailed docs are in **[doc/](doc/)** (numbered 01–06 for reading order). Many include **Mermaid diagrams** (architecture, flows, data model, auth); render in GitHub, VS Code, or any Mermaid viewer.
 
-| Doc | Description |
-|-----|-------------|
-| [doc/README.md](doc/README.md) | Documentation index and diagram list |
-| [01-system-design](doc/01-system-design.md) | Architecture, flows, pickup lifecycle, end-to-end sequence |
-| [02-api-design](doc/02-api-design.md) | REST API reference |
-| [03-data-model-design](doc/03-data-model-design.md) | Database schema (5 diagram views) |
-| [04-authentication](doc/04-authentication.md) | JWT, roles, verification flows |
-| [05-configuration](doc/05-configuration.md) | Env vars, config flow, deployment |
-| [06-presentation-points](doc/06-presentation-points.md) | PPT cheat sheet and “system at a glance” diagram |
+
+| Doc                                                     | Description                                                |
+| ------------------------------------------------------- | ---------------------------------------------------------- |
+| [doc/README.md](doc/README.md)                          | Documentation index and diagram list                       |
+| [01-system-design](doc/01-system-design.md)             | Architecture, flows, pickup lifecycle, end-to-end sequence |
+| [02-api-design](doc/02-api-design.md)                   | REST API reference                                         |
+| [03-data-model-design](doc/03-data-model-design.md)     | Database schema (5 diagram views)                          |
+| [04-authentication](doc/04-authentication.md)           | JWT, roles, verification flows                             |
+| [05-configuration](doc/05-configuration.md)             | Env vars, config flow, deployment                          |
+| [06-presentation-points](doc/06-presentation-points.md) | PPT cheat sheet and “system at a glance” diagram           |
+
 
 ## Default credentials (development)
 
 - **Admin:** `admin@gmail.com` / `Admin@123` (created on first run if missing)
 - **Test NGOs:** See seed output in console; e.g. `ngo1@test.com`, `ngo2@test.com` with password `Test@1234` when NGO table is empty.
+

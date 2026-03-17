@@ -24,4 +24,5 @@ class NGO(SQLModel, table=True):
     password: str
     is_verified: bool = Field(default=False)
     verification_token: Optional[str] = Field(default=None)
+    certificate_path: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)

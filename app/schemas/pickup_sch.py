@@ -61,6 +61,7 @@ class PickupResponse(BaseModel):
     pickup_address: str
     scheduled_time: Optional[datetime] = None
     items_description: Optional[str] = None
+    pickup_image_path: Optional[str] = None
     current_status: PickupStatus
     payment_status: str  # pending, paid, refunded
     status_history: List[StatusHistoryEntry] = []
@@ -76,6 +77,7 @@ class PickupListEntry(BaseModel):
     donor_id: int
     ngo_id: int
     pickup_address: str
+    pickup_image_path: Optional[str] = None
     current_status: PickupStatus
     payment_status: str
     created_at: datetime

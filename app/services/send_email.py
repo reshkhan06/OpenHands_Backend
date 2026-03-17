@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from pydantic import BaseModel, EmailStr
-from typing import List
+from typing import List, Optional
 
 # Load .env from Backend directory so it works when running uvicorn from project root or Backend
 _backend_dir = Path(__file__).resolve().parent.parent
@@ -280,6 +280,49 @@ async def send_ngo_approval_result(ngo_email: str, ngo_name: str, approved: bool
         return True
     except Exception as e:
         logger.exception("Error sending NGO approval result to %s: %s", ngo_email, e)
+        return False
+
+
+# --- Contact / feedback notification to admin ---
+
+async def send_contact_message_to_admin(
+    name: str,
+    email: str,
+    subject: str,
+    message_text: str,
+    phone: Optional[str] = None,
+):
+    """Send contact/feedback message details to ADMIN_EMAIL (if configured)."""
+    admin = (ADMIN_EMAIL or "").strip()
+    if not admin:
+        return False
+    if not _mail_configured():
+        logger.warning("Email not sent (contact to admin): mail not configured in .env")
+        return False
+
+    safe_subject = subject.strip() or "New contact message"
+    html_body = f"""
+    <h2>New contact message – OpenHands</h2>
+    <p><strong>From:</strong> {name} &lt;{email}&gt;</p>
+    <p><strong>Subject:</strong> {safe_subject}</p>
+    {f"<p><strong>Phone:</strong> {phone}</p>" if phone else ""}
+    <p><strong>Message:</strong></p>
+    <p>{message_text.replace(chr(10), "<br/>")}</p>
+    """
+
+    msg = MessageSchema(
+        subject=f"[OpenHands] {safe_subject}",
+        recipients=[admin],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    try:
+        fm = FastMail(conf)
+        await fm.send_message(message=msg)
+        logger.info("Contact message email sent to admin %s", admin)
+        return True
+    except Exception as e:
+        logger.exception("Error sending contact message to admin %s: %s", admin, e)
         return False
 
 

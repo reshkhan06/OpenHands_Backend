@@ -9,6 +9,7 @@ from app.models.ngo import NGO
 from app.models.pickup import Pickup, StatusHistoryEntry
 from app.models.payment import Payment
 from app.models.admin_config import AdminConfig
+from app.models.feedback import Feedback
 from app.schemas.user_sch import UserRole
 from app.dependencies.auth import get_current_user, require_roles
 from app.services.pickup_service import pickup_to_response
@@ -19,10 +20,22 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 AdminUser = Depends(require_roles(UserRole.ADMIN))
 
 
-# ---------- Users ----------
 class UserUpdateAdmin(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+class UserDetailResponse(BaseModel):
+    user_id: int
+    fname: str
+    lname: str
+    email: str
+    contact_number: int
+    location: str
+    role: str
+    is_verified: bool
+    is_active: bool
+    created_at: Optional[str] = None
 
 
 @router.get("/users")
@@ -33,9 +46,8 @@ def admin_list_users(
     search: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
 ):
-    statement = select(User)
-    if role:
-        statement = statement.where(User.role == role)
+    # Donor management page: only list donors (hide admin accounts)
+    statement = select(User).where(User.role == UserRole.DONOR)
     if is_active is not None:
         statement = statement.where(User.is_active == is_active)
     if search:
@@ -60,6 +72,29 @@ def admin_list_users(
         }
         for u in users
     ]
+
+
+@router.get("/users/{user_id}", response_model=UserDetailResponse)
+def admin_get_user_detail(
+    user_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = AdminUser,
+):
+    user = session.exec(select(User).where(User.user_id == user_id)).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return UserDetailResponse(
+        user_id=user.user_id,
+        fname=user.fname,
+        lname=user.lname,
+        email=user.email,
+        contact_number=user.contact_number,
+        location=user.location,
+        role=user.role.value if hasattr(user.role, "value") else str(user.role),
+        is_verified=user.is_verified,
+        is_active=getattr(user, "is_active", True),
+        created_at=user.created_at.isoformat() if user.created_at else None,
+    )
 
 
 @router.patch("/users/{user_id}")
@@ -91,6 +126,26 @@ class NGOUpdateAdmin(BaseModel):
     is_verified: Optional[bool] = None
 
 
+class NGODetailResponse(BaseModel):
+    ngo_id: int
+    ngo_name: str
+    registration_number: str
+    ngo_type: str
+    email: str
+    website_url: Optional[str] = None
+    address: str
+    city: str
+    state: str
+    pincode: str
+    mission_statement: str
+    bank_name: str
+    account_number: str
+    ifsc_code: str
+    is_verified: bool
+    certificate_path: Optional[str] = None
+    created_at: Optional[str] = None
+
+
 @router.get("/ngos")
 def admin_list_ngos(
     session: Session = Depends(get_session),
@@ -114,6 +169,36 @@ def admin_list_ngos(
         }
         for n in ngos
     ]
+
+
+@router.get("/ngos/{ngo_id}", response_model=NGODetailResponse)
+def admin_get_ngo_detail(
+    ngo_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = AdminUser,
+):
+    ngo = session.exec(select(NGO).where(NGO.ngo_id == ngo_id)).first()
+    if not ngo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NGO not found")
+    return NGODetailResponse(
+        ngo_id=ngo.ngo_id,
+        ngo_name=ngo.ngo_name,
+        registration_number=ngo.registration_number,
+        ngo_type=str(ngo.ngo_type),
+        email=ngo.email,
+        website_url=ngo.website_url,
+        address=ngo.address,
+        city=ngo.city,
+        state=ngo.state,
+        pincode=ngo.pincode,
+        mission_statement=ngo.mission_statement,
+        bank_name=ngo.bank_name,
+        account_number=ngo.account_number,
+        ifsc_code=ngo.ifsc_code,
+        is_verified=ngo.is_verified,
+        certificate_path=getattr(ngo, "certificate_path", None),
+        created_at=ngo.created_at.isoformat() if ngo.created_at else None,
+    )
 
 
 @router.patch("/ngos/{ngo_id}")
@@ -256,7 +341,8 @@ def admin_dashboard(
     session: Session = Depends(get_session),
     current_user: User = AdminUser,
 ):
-    users_count = session.exec(select(User)).all()
+    # "users_total" in UI refers to donors (hide admins from donor metrics)
+    users_count = session.exec(select(User).where(User.role == UserRole.DONOR)).all()
     users_total = len(users_count)
     ngos_count = session.exec(select(NGO)).all()
     ngos_total = len(ngos_count)
@@ -274,3 +360,27 @@ def admin_dashboard(
         "pickups_requested": pickups_requested,
         "deposits_active": deposits_active,
     }
+
+
+# ---------- Feedback ----------
+@router.get("/feedbacks")
+def admin_list_feedbacks(
+    session: Session = Depends(get_session),
+    current_user: User = AdminUser,
+    limit: int = Query(100, ge=1, le=500),
+):
+    statement = select(Feedback).order_by(Feedback.created_at.desc()).limit(limit)
+    rows = session.exec(statement).all()
+    return [
+        {
+            "feedback_id": f.feedback_id,
+            "name": f.name,
+            "email": f.email,
+            "category": f.category,
+            "rating": f.rating,
+            "follow_up": f.follow_up,
+            "message": f.message,
+            "created_at": f.created_at.isoformat() if f.created_at else None,
+        }
+        for f in rows
+    ]

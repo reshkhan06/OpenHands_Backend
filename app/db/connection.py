@@ -39,6 +39,29 @@ def _migrate_add_user_is_active():
             print("Migration: added users.is_active column.")
 
 
+def _migrate_add_ngo_certificate_path():
+    """Add certificate_path column to ngos table if it doesn't exist (for existing DBs)."""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT COUNT(*) FROM pragma_table_info('ngos') WHERE name='certificate_path'"))
+        if result.scalar() == 0:
+            conn.execute(text("ALTER TABLE ngos ADD COLUMN certificate_path TEXT"))
+            conn.commit()
+            print("Migration: added ngos.certificate_path column.")
+
+def _migrate_add_pickups_pickup_image_path():
+    """Add pickup_image_path column to pickups table if it doesn't exist (for existing DBs)."""
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT COUNT(*) FROM pragma_table_info('pickups') WHERE name='pickup_image_path'"))
+        if result.scalar() == 0:
+            conn.execute(text("ALTER TABLE pickups ADD COLUMN pickup_image_path TEXT"))
+            conn.commit()
+            print("Migration: added pickups.pickup_image_path column.")
+
+
 def _seed_default_admin_if_missing():
     """Create default admin user if no user with admin@gmail.com exists."""
     from app.models.user import User
@@ -126,9 +149,12 @@ def create_db_and_tables():
     from app.models.pickup import Pickup, StatusHistoryEntry
     from app.models.payment import Payment
     from app.models.admin_config import AdminConfig
+    from app.models.feedback import Feedback
 
     SQLModel.metadata.create_all(engine)
     _migrate_add_user_is_active()
+    _migrate_add_ngo_certificate_path()
+    _migrate_add_pickups_pickup_image_path()
     _seed_default_admin_if_missing()
     _seed_ngos_if_empty()
     print("Database tables created successfully!")

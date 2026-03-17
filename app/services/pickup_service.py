@@ -79,6 +79,7 @@ def pickup_to_response(session: Session, pickup: Pickup) -> dict:
         "pickup_address": pickup.pickup_address,
         "scheduled_time": pickup.scheduled_time.isoformat() if pickup.scheduled_time else None,
         "items_description": pickup.items_description,
+        "pickup_image_path": getattr(pickup, "pickup_image_path", None),
         "current_status": pickup.current_status,
         "payment_status": pickup.payment_status,
         "status_history": history,

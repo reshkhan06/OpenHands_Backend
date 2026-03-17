@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from enum import Enum
+import re
 
 
 class UserRole(str, Enum):
@@ -33,7 +34,10 @@ class UserSignUp(BaseModel):
             raise ValueError("First name cannot be empty")
         if len(v.strip()) < 2 or len(v.strip()) > 50:
             raise ValueError("First name must be between 2 and 50 characters")
-        return v.strip()
+        v = v.strip()
+        if not re.fullmatch(r"[A-Za-z\s]+", v):
+            raise ValueError("First name must contain only letters and spaces")
+        return v
 
     @field_validator("lname")
     @classmethod
@@ -42,7 +46,10 @@ class UserSignUp(BaseModel):
             raise ValueError("Last name cannot be empty")
         if len(v.strip()) < 2 or len(v.strip()) > 50:
             raise ValueError("Last name must be between 2 and 50 characters")
-        return v.strip()
+        v = v.strip()
+        if not re.fullmatch(r"[A-Za-z\s]+", v):
+            raise ValueError("Last name must contain only letters and spaces")
+        return v
 
     # 10 Digit Contact Number Validation
     @field_validator("contact_number")

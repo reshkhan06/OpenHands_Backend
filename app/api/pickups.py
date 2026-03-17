@@ -1,7 +1,9 @@
 from typing import Optional, List
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, UploadFile, File, Form
 from sqlmodel import Session, select
+import os
+import uuid
 
 from app.db.connection import get_session
 from app.models.pickup import Pickup, StatusHistoryEntry
@@ -84,6 +86,130 @@ def create_pickup(
         payment_status = "pending"
     else:
         # Dummy payment path for development: mark as already paid
+        order_id = f"dummy_order_{pickup.pickup_id}"
+        payment = Payment(
+            pickup_id=pickup.pickup_id,
+            razorpay_order_id=order_id,
+            razorpay_payment_id=f"dummy_payment_{pickup.pickup_id}",
+            amount=amount_paise,
+            currency="INR",
+            status="paid",
+        )
+        pickup.payment_status = "paid"
+        session.add(payment)
+        session.add(pickup)
+        session.commit()
+        payment_status = "paid"
+
+    session.refresh(pickup)
+    donor_name = f"{current_user.fname} {current_user.lname}".strip() or "A donor"
+    scheduled_str = pickup.scheduled_time.strftime("%d/%m/%Y, %I:%M %p") if pickup.scheduled_time else ""
+    background_tasks.add_task(
+        send_pickup_request_to_ngo,
+        ngo_email=ngo.email,
+        ngo_name=ngo.ngo_name,
+        donor_name=donor_name,
+        pickup_id=pickup.pickup_id,
+        pickup_address=pickup.pickup_address,
+        scheduled_time=scheduled_str,
+        items_description=pickup.items_description or "",
+    )
+    return {
+        "pickup": pickup_to_response(session, pickup),
+        "payment": {
+            "order_id": order_id,
+            "amount": amount_paise,
+            "currency": "INR",
+            "status": payment_status,
+            "key_id": RAZORPAY_KEY_ID if get_razorpay_client() else None,
+        },
+    }
+
+
+@router.post("/with-image", status_code=status.HTTP_201_CREATED)
+async def create_pickup_with_image(
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_roles(UserRole.DONOR, UserRole.ADMIN)),
+    image: UploadFile = File(...),
+    ngo_id: int = Form(...),
+    pickup_address: str = Form(...),
+    scheduled_time: Optional[str] = Form(None),
+    items_description: Optional[str] = Form(None),
+):
+    """Create a pickup request with an optional image upload (multipart/form-data)."""
+    allowed_types = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+    ctype = (image.content_type or "").lower()
+    if ctype == "image/jpg":
+        ctype = "image/jpeg"
+    if ctype not in allowed_types:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be png/jpg/jpeg/webp")
+
+    raw = await image.read()
+    if len(raw) == 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image file is empty")
+    if len(raw) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be <= 5MB")
+
+    # Reuse schema validation for address + types
+    body = PickupCreate(
+        ngo_id=ngo_id,
+        pickup_address=pickup_address,
+        scheduled_time=scheduled_time,  # pydantic will coerce if matches ISO, else error
+        items_description=items_description,
+    )
+
+    ngo = session.exec(select(NGO).where(NGO.ngo_id == body.ngo_id)).first()
+    if not ngo:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="NGO not found")
+    if not ngo.is_verified:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="NGO is not verified")
+
+    pickup = Pickup(
+        donor_id=current_user.user_id,
+        ngo_id=body.ngo_id,
+        pickup_address=body.pickup_address,
+        scheduled_time=body.scheduled_time,
+        items_description=body.items_description,
+    )
+    session.add(pickup)
+    session.commit()
+    session.refresh(pickup)
+
+    # Save image
+    ext = ".png" if ctype == "image/png" else ".webp" if ctype == "image/webp" else ".jpg"
+    upload_dir = os.path.join(os.getcwd(), "uploads", "pickup_images")
+    os.makedirs(upload_dir, exist_ok=True)
+    fname = f"pickup_{pickup.pickup_id}_{uuid.uuid4().hex}{ext}"
+    fpath = os.path.join(upload_dir, fname)
+    with open(fpath, "wb") as f:
+        f.write(raw)
+    pickup.pickup_image_path = f"/uploads/pickup_images/{fname}"
+    session.add(pickup)
+
+    entry = StatusHistoryEntry(
+        pickup_id=pickup.pickup_id,
+        status=PickupStatus.REQUESTED.value,
+        changed_by_user_id=current_user.user_id,
+    )
+    session.add(entry)
+
+    amount_paise = get_deposit_amount_paise(session)
+    order_result = create_order(amount_paise, receipt=f"pickup_{pickup.pickup_id}")
+
+    if order_result:
+        order_id, _ = order_result
+        payment = Payment(
+            pickup_id=pickup.pickup_id,
+            razorpay_order_id=order_id,
+            amount=amount_paise,
+            currency="INR",
+            status="pending",
+        )
+        session.add(payment)
+        session.commit()
+        payment_status = "pending"
+    else:
         order_id = f"dummy_order_{pickup.pickup_id}"
         payment = Payment(
             pickup_id=pickup.pickup_id,

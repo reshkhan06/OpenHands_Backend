@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, Union
 from datetime import timedelta
+import re
 
 from app.models.user import User
 from app.db.connection import get_session
@@ -32,6 +33,30 @@ class UserSignUp(BaseModel):
     gender: str
     role: str
     dob: Optional[str] = None
+
+    @field_validator("fname")
+    @classmethod
+    def validate_fname(cls, v):
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("First name cannot be empty")
+        if len(v) < 2 or len(v) > 50:
+            raise ValueError("First name must be between 2 and 50 characters")
+        if not re.fullmatch(r"[A-Za-z\s]+", v):
+            raise ValueError("First name must contain only letters and spaces")
+        return v
+
+    @field_validator("lname")
+    @classmethod
+    def validate_lname(cls, v):
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("Last name cannot be empty")
+        if len(v) < 2 or len(v) > 50:
+            raise ValueError("Last name must be between 2 and 50 characters")
+        if not re.fullmatch(r"[A-Za-z\s]+", v):
+            raise ValueError("Last name must contain only letters and spaces")
+        return v
 
     @field_validator("contact_number", mode="before")
     @classmethod

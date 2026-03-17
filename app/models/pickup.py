@@ -25,6 +25,7 @@ class Pickup(SQLModel, table=True):
     pickup_address: str
     scheduled_time: Optional[datetime] = None
     items_description: Optional[str] = None
+    pickup_image_path: Optional[str] = Field(default=None)
     current_status: str = Field(default=PickupStatus.REQUESTED.value)
     payment_status: str = Field(default="pending")  # pending, paid, refunded, refund_pending
     created_at: datetime = Field(default_factory=datetime.utcnow)
